@@ -1,0 +1,204 @@
+---
+title: "Create coverage plots form CAMISIM and MetaQuast"
+author: "Till-Robin.Lesker@helmholtz-hzi.de"
+date: "Jan 23., 2020"
+output: html_document
+---
+
+__Last modification:__ `r format(Sys.time(), '%d %B, %Y')`
+
+
+<!-- more -->
+
+
+```{r global_options, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(fig.width=10, fig.height=8,
+                      warning=FALSE)
+```
+
+
+## Load needed Libraries and install missing ones 
+```{r, echo=FALSE, message=F, warning=F}
+
+# library
+
+library("reshape2")
+library("ggplot2")
+library("ggpubr")
+#library("tidyquant")
+library("dplyr")
+
+
+```
+
+## Load orginal data files:
+```{r  echo=T}
+
+
+# Please set file locations and parameters:
+
+raw_Genome_fraction <- read.csv("Genome_fraction.tsv" , header = TRUE , sep = "\t")
+raw_NGA50 <- read.csv("NGA50.tsv" , header = TRUE , sep = "\t")
+raw_num_contig <- read.csv("num_contigs.tsv" , header = TRUE , sep = "\t")
+raw_Genome_coverage <- read.csv("coverages0_9.tsv" , header = FALSE , sep = "\t")
+
+```
+
+## fix data
+```{r  echo=T}
+
+## to long format
+Genome_fraction <- melt(raw_Genome_fraction, id.vars = "Assemblies" , variable.name = "Program", value.name = "Genome_fraction")
+NGA50 <- melt(raw_NGA50, id.vars = "Assemblies" , variable.name = "Program", value.name = "NGA50")
+num_contig <- melt(raw_num_contig, id.vars = "Assemblies" , variable.name = "Program", value.name = "num_contig")
+
+## repleace "-" with NA
+Genome_fraction$Genome_fraction <- as.numeric(gsub("-",NA,Genome_fraction$Genome_fraction))
+NGA50$NGA50 <- as.numeric(gsub("-",NA,NGA50$NGA50))
+num_contig$num_contig <- as.numeric(gsub("-",NA,num_contig$num_contig))
+
+## remove PATH
+# raw_Genome_coverage$V2 <- gsub("/net/sgi/metagenomics/data/19122017_mousegut_scaffolds/genomes/","",raw_Genome_coverage$V2)
+## remove file extention
+raw_Genome_coverage$V2 <- gsub(".fa","",raw_Genome_coverage$V2)
+## create new dataframe for coverage
+Genome_coverage <- cbind.data.frame(Assemblies=raw_Genome_coverage$V2,Coverage=raw_Genome_coverage$V3)
+
+## add coverage informations to MetaQuast stats
+Genome_fraction <- merge.data.frame(Genome_fraction,Genome_coverage,by = "Assemblies")
+NGA50 <- merge.data.frame(NGA50,Genome_coverage,by = "Assemblies")
+num_contig <- merge.data.frame(num_contig,Genome_coverage,by = "Assemblies")
+
+
+# transform data before for the trendline
+Genome_fraction$Coverage_log2 <- log2(Genome_fraction$Coverage)
+NGA50$Coverage_log2 <- log2(NGA50$Coverage)
+num_contig$Coverage_log2 <- log2(num_contig$Coverage)
+
+
+```
+
+
+
+
+
+
+## create final multiple plots
+```{r  echo=T ,fig.width=7, fig.height=10, warning=F}
+
+# data subsets
+
+Genome_fraction_default <- subset(Genome_fraction , Program == "metaSPAdes" | Program == "megahit.103.df" | Program == "megahit.113.df" | Program == "megahit.129.df"  )
+Genome_fraction_megahit113 <- subset(Genome_fraction , Program == "metaSPAdes" | Program == "megahit.113.ms" | Program == "megahit.113.df" | Program == "megahit.113.ml"  )
+NGA50_default <- subset(NGA50 , Program == "metaSPAdes" | Program == "megahit.103.df" | Program == "megahit.113.df" | Program == "megahit.129.df"  )
+NGA50_megahit113 <- subset(NGA50 , Program == "metaSPAdes" | Program == "megahit.113.ms" | Program == "megahit.113.df" | Program == "megahit.113.ml"  )
+num_contig_default <- subset(num_contig , Program == "metaSPAdes" | Program == "megahit.103.df" | Program == "megahit.113.df" | Program == "megahit.129.df"  )
+num_contig_megahit113 <- subset(num_contig , Program == "metaSPAdes" | Program == "megahit.113.ms" | Program == "megahit.113.df" | Program == "megahit.113.ml"  )
+
+RegLineSize=1
+# https://nanx.me/ggsci/reference/pal_jco.html
+jcoExtra<-c("#0073C2FF", "#7AA6DCFF", "#003C67FF", "#CD534CFF")
+jcoExtra<-c("#0073C2FF", "#00A087B2", "#7E6148B2", "#CD534CFF")
+
+# https://bookdown.org/hneth/ds4psy/D-2-apx-colors-essentials.html
+cbf_1 <- c("#999999", "#0072B2", "#F0E442", "#D55E00")
+cbf_2 <- c("#0072B2", "#E69F00", "#009E73", "#D55E00")
+
+
+plot_Genome_fraction_default <- ggscatter(Genome_fraction_default, x = "Coverage", y = "Genome_fraction", ylab="Genome fraction (%)",
+                add = "loess", add.params = list(size=RegLineSize) ,        # for adding local regression fitting
+                conf.int = FALSE,                # Add confidence interval
+                color = "Program", palette = cbf_1, # color blind friendly palette
+                size=1
+                ) + theme_bw() + scale_y_continuous(limits = c(0,100)) + scale_x_continuous(trans = 'log2') +
+                theme(legend.position="none", axis.title.x=element_blank())
+
+  plot_NGA50_default <- ggscatter(NGA50_default, x = "Coverage", y = "NGA50", ylim=c(128,524288),
+                add = "loess", add.params = list(size=RegLineSize) ,        # for adding local regression fitting
+                conf.int = FALSE,                # Add confidence interval
+                color = "Program", palette = cbf_1, # color blind friendly palette
+                size=1
+                ) + theme_bw() + scale_x_continuous(trans = 'log2') + scale_y_continuous(trans = 'log2') +
+                theme(legend.position="none", axis.title.x=element_blank())
+                #scale_y_continuous(limits = c(0,max(NGA50_default$NGA50)))
+
+plot_num_contig_default <- ggscatter(num_contig_default, x = "Coverage", y = "num_contig", ylab="# contigs",
+                add = "loess", add.params = list(size=RegLineSize) ,        # for adding local regression fitting
+                conf.int = FALSE,                # Add confidence interval
+                color = "Program", palette = cbf_1, # color blind friendly palette
+                size=1
+                ) + theme_bw() + scale_x_continuous(trans = 'log2')+ scale_y_continuous(trans = 'log2') +
+                theme(legend.position="bottom")
+
+
+plot_Genome_fraction_megahit113 <- ggscatter(Genome_fraction_megahit113, x = "Coverage", y = "Genome_fraction",
+                add = "loess", add.params = list(size=RegLineSize) ,        # for adding local regression fitting
+                conf.int = FALSE,                # Add confidence interval
+                color = "Program", palette = cbf_2, # color blind friendly palette
+                size=1
+                ) + theme_bw() + scale_y_continuous(limits = c(0,100)) + scale_x_continuous(trans = 'log2') +
+                 theme(legend.position="none", axis.title.x=element_blank(), axis.title.y=element_blank() )
+
+plot_NGA50_megahit113 <- ggscatter(NGA50_megahit113, x = "Coverage", y = "NGA50", ylim=c(128,524288),
+                add = "loess", add.params = list(size=RegLineSize) ,        # for adding local regression fitting
+                conf.int = FALSE,                # Add confidence interval
+                color = "Program", palette = cbf_2, # color blind friendly palette
+                size=1
+                ) + theme_bw() + scale_x_continuous(trans = 'log2') +
+                scale_y_continuous(trans = 'log2') +  
+                theme(legend.position="none", axis.title.x=element_blank(), axis.title.y=element_blank() )
+
+plot_num_contig_megahit113 <- ggscatter(num_contig_megahit113, x = "Coverage", y = "num_contig",
+                add = "loess", add.params = list(size=RegLineSize) ,        # for adding local regression fitting
+                conf.int = FALSE,                # Add confidence interval
+                color = "Program", palette = cbf_2, # color blind friendly palette
+                size=1
+                ) + theme_bw() + scale_x_continuous(trans = 'log2')+ scale_y_continuous(trans = 'log2') +
+                 theme(legend.position="bottom", axis.title.y=element_blank() )
+
+
+#plot_Genome_fraction_default
+#plot_NGA50_default
+#plot_num_contig_default
+
+MetaQuast_Coverage_default <- ggarrange(plot_Genome_fraction_default, plot_NGA50_default, plot_num_contig_default, 
+          labels = c("A", "B", "C"),
+          ncol = 1, nrow = 3)
+MetaQuast_Coverage_default 
+
+
+MetaQuast_Coverage_megahit113 <- ggarrange(plot_Genome_fraction_megahit113, plot_NGA50_megahit113, plot_num_contig_megahit113, 
+          labels = c("A", "B", "C"),
+          ncol = 1, nrow = 3)
+MetaQuast_Coverage_megahit113 
+
+
+
+MetaQuast_Coverage_both <- ggarrange(plot_Genome_fraction_default, plot_Genome_fraction_megahit113, plot_NGA50_default,  plot_NGA50_megahit113, plot_num_contig_default,plot_num_contig_megahit113, labels = c("a", "d", "b","e","c","f"), ncol = 2, nrow = 3 , align = "hv" , common.legend = TRUE)
+MetaQuast_Coverage_both
+
+
+
+
+pdf("MetaQuast-Coverage-default.pdf",height = 8 , width = 6 , useDingbats = FALSE )
+MetaQuast_Coverage_default
+dev.off()
+
+pdf("MetaQuast-Coverage-megahit113.pdf",height = 8, width = 6 , useDingbats = FALSE)
+MetaQuast_Coverage_megahit113
+dev.off()
+
+
+pdf("MetaQuast-Coverage-both.pdf",height = 8, width = 6 , useDingbats = FALSE)
+MetaQuast_Coverage_both
+dev.off()
+
+
+```
+
+
+
+
+
+
+
